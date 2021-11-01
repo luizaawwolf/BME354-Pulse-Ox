@@ -1,1 +1,1 @@
-# BME354-Pulse-Ox
+# BME354 Pulse Oximeter
