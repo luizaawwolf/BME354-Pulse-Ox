@@ -1,3 +1,19 @@
+//Luiza Wolf and Alex Chen
+//OLED initialization
+
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+#define OLED_RESET     4
+#define SCREEN_ADDRESS 0x3C
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
 
 // H-bridge pins
 int redPNP_pin = 2;
@@ -19,7 +35,26 @@ float spo2 = 0;
 
 
 void setup() {
+  // Begin serial monitor / plotter
   Serial.begin(9600);
+
+  // OLED Code
+  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;);
+  }
+  
+  display.display();
+  delay(2000);
+  display.clearDisplay();
+  
+  //test to see if the display is working so we draw a single pixel to see if it turns
+  display.drawPixel(10, 10, SSD1306_WHITE);
+  display.display();
+  delay(2000);
+  //since we want to continuously change the heartrate the code will always run so up here we just set it 
+  //to run while true so forever.
+  
 
   // Set pin modes for h-bridge pins
   pinMode(redPNP_pin, OUTPUT);
@@ -69,6 +104,8 @@ void loop() {
   reset();
 
   spo2 = average_red_AC/average_IR_AC;
+  writeSpO2(spo2);
+  delay(1000000);
   
 }
 
@@ -103,3 +140,13 @@ void reset(){
 }
 
 // HELPER CODE FOR OLED
+void writeSpO2(int reading) {
+  display.clearDisplay(); //clear anthing on the display
+
+  display.setTextSize(2); // Draw 2X-scale text
+  display.setTextColor(SSD1306_WHITE); //sets text color as white
+  display.setCursor(2, 0); //shows where to start writing
+  display.print(F("SpO2:")); //displays the characters presentes
+  display.println(reading);  //tells OLED what to write
+  delay(100);
+}
