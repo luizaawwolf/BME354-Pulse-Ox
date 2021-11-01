@@ -11,11 +11,8 @@ int photodiode_pin = 7;
 
 // Sensing variables
 float photodiode_reading = 0;
-float red_AC[5000];
-float IR_AC[5000];
-float average_red_AC = 0;
-float average_IR_AC = 0;
-float spo2 = 0;
+//float red_photodiode_array[time_led_on * 5];
+//float IR_photodiode_array[time_led_on * 5];
 
 
 void setup() {
@@ -41,14 +38,12 @@ void loop() {
     // read and store to red photodiode array
     photodiode_reading = analogRead(photodiode_pin);
     Serial.println(photodiode_reading);
-    red_AC[i] = photodiode_reading;
-    average_red_AC += photodiode_reading;
+//    red_photodiode_array[i] = photodiode_reading;
+    
     
     // 1ms sampling rate
     delay(1);
   }
-  // turn everything off for 1s
-  average_red_AC = average_red_AC / time_led_on;
   reset();  
 
   // turn IR LED on for 5s and read from photodiode
@@ -58,22 +53,16 @@ void loop() {
     // read and store IR array
     photodiode_reading = analogRead(photodiode_pin);
     Serial.println(photodiode_reading);
-    IR_AC[i] = photodiode_reading;
-    average_IR_AC += photodiode_reading;
+//    IR_photodiode_array[i] = photodiode_reading;
 
     // 1ms sampling rate
     delay(1);
   }
-  // turn everything off for 1s
-  average_IR_AC = average_IR_AC / time_led_on;
   reset();
-
-  spo2 = average_red_AC/average_IR_AC;
-  
 }
 
 
-// HELPER CODE FOR H-BRIDGE
+// DRIVER CODE FOR H-BRIDGE
 
 // Turns RED LED on
 void turnRedOn(int duration){
@@ -101,5 +90,3 @@ void reset(){
   // wait 1s
   delay(1000);
 }
-
-// HELPER CODE FOR OLED
