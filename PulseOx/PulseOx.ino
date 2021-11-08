@@ -75,9 +75,21 @@ void loop() {
 
   if (irValue < 50000){
     Serial.println(" No finger?");
+    display.clearDisplay();
+    display.setTextSize(1);                    
+    display.setTextColor(WHITE);             
+    display.setCursor(30,5);                
+    display.println("Please Place "); 
+    display.setCursor(30,15);
+    display.println("your finger ");
+    display.display();
   } else {
-
-    
+    display.clearDisplay();
+    display.setTextSize(1);                    
+    display.setTextColor(WHITE);             
+    display.setCursor(30,5);                
+    display.println("Reading..."); 
+    display.display();    
     for( int i = 0; i < numSamples; i++){
       // read red photodiode
       long redValue = particleSensor.getRed();    //Reading the IR value
@@ -118,7 +130,9 @@ void loop() {
     spo2 = average_red_AC/average_IR_AC;
     Serial.println(spo2);
     writeOLED(spo2, beatAvg);
-    delay(2000);
+    exit(0);
+//    break;
+//    delay(2000);
     
   }
 }
