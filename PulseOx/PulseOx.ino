@@ -4,6 +4,9 @@
 #include <MAX30105.h>
 #include <Wire.h>
 #include <SPI.h>
+#include <PeakDetection.h>
+
+
 
 // Declare sensor
 MAX30105 particleSensor;
@@ -20,7 +23,7 @@ MAX30105 particleSensor;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 
-int numSamples = 500;
+int numSamples = 300;
 int samplingTime = 1; //1ms
 
 // SPO2 variables
@@ -34,8 +37,11 @@ byte rates[RATE_SIZE]; //Array of heart rates
 byte rateSpot = 0;
 long lastBeat = 0; //Time at which the last beat occurred
 
-float beatsPerMinute;
-int beatAvg;
+
+// Peak detection code for bpm
+PeakDetection peakDetection; // create PeakDetection object
+int prevBeat = 0;
+int bpm = 0;
 
 void setup() {
   Serial.begin(9600);
@@ -67,6 +73,20 @@ void setup() {
   display.setCursor(30,15);
   display.println("your finger ");
   display.display();
+
+  // Peak detection code for bpm
+  peakDetection.begin(5, 0.8, 0.6); // sets the lag, threshold and influence
+  //Setup to sense a nice looking saw tooth on the plotter
+  byte ledBrightness = 0x1F; //Options: 0=Off to 255=50mA
+  byte sampleAverage = 8; //Options: 1, 2, 4, 8, 16, 32
+  byte ledMode = 3; //Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green
+  int sampleRate = 100; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
+  int pulseWidth = 411; //Options: 69, 118, 215, 411
+  int adcRange = 4096; //Options: 2048, 4096, 8192, 16384
+
+  particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange); //Configure sensor with these settings
+
+  Serial.println("ir:,peak:,ave:");
 }
 
 void loop() {
@@ -90,46 +110,44 @@ void loop() {
     display.setCursor(30,5);                
     display.println("Reading..."); 
     display.display();    
-    for( int i = 0; i < numSamples; i++){
-      // read red photodiode
-      long redValue = particleSensor.getRed();    //Reading the IR value
-      average_red_AC += redValue;
-  
-      // read IR photodiode
-      long irValue = particleSensor.getIR();    //Reading the IR value
-      average_IR_AC += irValue;
-//      Serial.print("...");
 
-      if (checkForBeat(irValue) == true)
-      {
-        //We sensed a beat!
-        long delta = millis() - lastBeat;
-        lastBeat = millis();
+
+    //read for 30s and count peaks
+    int beatCount = 0;
     
-        beatsPerMinute = 60 / (delta / 1000.0);
-    
-        if (beatsPerMinute < 255 && beatsPerMinute > 20)
-        {
-          rates[rateSpot++] = (byte)beatsPerMinute; //Store this reading in the array
-          rateSpot %= RATE_SIZE; //Wrap variable
-    
-          //Take average of readings
-          beatAvg = 0;
-          for (byte x = 0 ; x < RATE_SIZE ; x++)
-            beatAvg += rates[x];
-          beatAvg /= RATE_SIZE;
-        }
+    for(int i = 0; i < numSamples; i++){
+      long irValue = particleSensor.getIR();
+      peakDetection.add(irValue); // adds a new data point
+      int peak = peakDetection.getPeak(); // returns 0, 1 or -1
+      double filtered = peakDetection.getFilt(); // moving average
+      if( (prevBeat == 0 or prevBeat == -1) and (peak == 1) and (filtered > 10000) ){
+        beatCount++;
       }
-      
-      delay(samplingTime);
+      prevBeat = peak;
+//      Serial.print(irValue); //Send raw data to plotter
+//      Serial.print(",");
+//      Serial.print((peak*500)+filtered+500); // print peak status
+//      Serial.print(",");
+//      Serial.println(filtered); // print moving average
+
+
+      long redValue = particleSensor.getRed();    //Reading the IR value
+//      Serial.println(redValue);
+      average_red_AC += redValue;
     }
-    Serial.println();
+  
+    int hr = beatCount * 2;
+//    Serial.print("HR: ");
+//    Serial.println(hr);
+//    delay(10000);
+    
+//    Serial.println();
   
     average_red_AC = average_red_AC / numSamples;
     average_IR_AC = average_IR_AC / numSamples;
     spo2 = average_red_AC/average_IR_AC;
-    Serial.println(spo2);
-    writeOLED(spo2, beatAvg);
+//    Serial.println(spo2);
+    writeOLED(spo2, hr);
     exit(0);
 //    break;
 //    delay(2000);
