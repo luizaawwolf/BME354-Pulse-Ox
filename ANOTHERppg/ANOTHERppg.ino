@@ -16,7 +16,6 @@ int prevBeat = 0;
 float average_red_AC = 0;
 float average_IR_AC = 0;
 float spo2 = 0;
-int numSamples = 300;
 
 
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
@@ -94,7 +93,7 @@ void setup() {
 void loop() {
 
   long irValue = particleSensor.getIR();
-  if (irValue < 50000){
+  if (irValue < 20000){ //50000
     Serial.println(" No finger?");
     display.clearDisplay();
     display.setTextSize(1);                    
@@ -114,13 +113,14 @@ void loop() {
     }
     
     //if has been reading for 20s, then report value
-    if( tcount >= 200 ){
-      int hr = beatCount * 2;
+    int numSamples = 200;
+    if( tcount >= numSamples ){
+      int hr = int(beatCount / 40.0 * 60);
       average_red_AC = average_red_AC / numSamples;
       average_IR_AC = average_IR_AC / numSamples;
-      spo2 = average_red_AC/average_IR_AC;
-      
+      spo2 = average_red_AC/ average_IR_AC / 2.0; //dividing by 2 for calibration purposes
       writeOLED(spo2, hr);
+      exit(0);
     } else {
 
       //SHOW PPG WHILE READING
@@ -164,7 +164,7 @@ void loop() {
 
       
       //Plot PPG
-      int y=40-(map(irValue, lastMin, lastMax, 20, 40));   // Normalize the pleth waveform against the rolling IR min/max to keep waveform centered
+      int y=40-(map(irValue, lastMin, lastMax, 10, 25));   // Normalize the pleth waveform against the rolling IR min/max to keep waveform centered
       Serial.println(y);
       display.drawLine(lastx,lasty,x,y,WHITE);
     
@@ -181,9 +181,9 @@ void loop() {
       lasty=y;
       lastx=x;
 
-      display.setTextSize(1);                    
-      display.setTextColor(WHITE);             
-      display.setCursor(5,60);                
+      display.setTextSize(1);  
+      display.setTextColor(WHITE, BLACK);             
+      display.setCursor(5,50);                
       display.print("Beat Count: "); 
       display.println(beatCount);
     
