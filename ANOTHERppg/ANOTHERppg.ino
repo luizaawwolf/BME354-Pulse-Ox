@@ -1,13 +1,25 @@
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include "MAX30105.h"
 #include <PeakDetection.h>
 
+// OLED libraries
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
 
 MAX30105 particleSensor;
+PeakDetection peakDetection; // create PeakDetection object
+int prevBeat = 0;
 
-Adafruit_SSD1306 oled(128, 64, &Wire, -1);
+
+// SPO2 variables
+float average_red_AC = 0;
+float average_IR_AC = 0;
+float spo2 = 0;
+int numSamples = 300;
+
+
+Adafruit_SSD1306 display(128, 64, &Wire, -1);
 byte x;
 byte y;
 byte z;
@@ -18,25 +30,25 @@ long lastMin=2200000;
 long lastMax=0;
 long rollingMin = 2200000;
 long rollingMax=0;
-PeakDetection peakDetection; // create PeakDetection object
 
+int tcount = 0;
+int beatCount = 0;
+bool cleard = false;
 
 void setup() {
   Serial.begin(115200);
   particleSensor.begin(Wire, I2C_SPEED_STANDARD);
-  oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-
-  peakDetection.begin(5, 0.8, 0.6); // sets the lag, threshold and influence
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
 
   //Setup to sense a nice looking saw tooth on the plotter
-  byte ledBrightness = 0x1F ; //Options: 0=Off to 255=50mA
+  byte ledBrightness = 0x1F; //Options: 0=Off to 255=50mA
   byte sampleAverage = 8; //Options: 1, 2, 4, 8, 16, 32
   byte ledMode = 3; //Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green
   int sampleRate = 100; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
   int pulseWidth = 411; //Options: 69, 118, 215, 411
   int adcRange = 4096; //Options: 2048, 4096, 8192, 16384
 
-  particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+  particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange); //Configure sensor with these settings
 
   //Take an average of IR readings at power up; this allows us to center the plot on start up
   const byte avgAmount = 30;
@@ -60,51 +72,143 @@ void setup() {
   lastx = 0;
   lasty = 0;
   delay(2000);
-  oled.clearDisplay();
+  display.clearDisplay();
+
+  // Peak detection
+  peakDetection.begin(5, 0.8, 0.6); // sets the lag, threshold and influence
+  
+  display.clearDisplay();
+  display.setTextSize(1);                    
+  display.setTextColor(WHITE);             
+  display.setCursor(30,5);                
+  display.println("Please Place "); 
+  display.setCursor(30,15);
+  display.println("your finger ");
+  display.display();
+  pinMode(LED_BUILTIN, OUTPUT);
+
+
+  
 }
 
 void loop() {
 
-  // Display is only 128 pixels wide, so if we're add the end of the display, clear the display and start back over
-  if(x>127)  
-  {
-    oled.clearDisplay();
-    x=0;
-    lastx=x;
-  }
+  long irValue = particleSensor.getIR();
+  if (irValue < 50000){
+    Serial.println(" No finger?");
+    display.clearDisplay();
+    display.setTextSize(1);                    
+    display.setTextColor(WHITE);             
+    display.setCursor(30,5);                
+    display.println("Please Place "); 
+    display.setCursor(30,25);
+    display.println("your finger ");
+    display.display();
+    tcount = 0;
+    beatCount = 0;
+    cleard = false;
+  } else {
+    if(!cleard){
+      display.clearDisplay();
+      cleard = true;
+    }
+    
+    //if has been reading for 20s, then report value
+    if( tcount >= 200 ){
+      int hr = beatCount * 2;
+      average_red_AC = average_red_AC / numSamples;
+      average_IR_AC = average_IR_AC / numSamples;
+      spo2 = average_red_AC/average_IR_AC;
+      
+      writeOLED(spo2, hr);
+    } else {
 
-  // Even though we're keeping track of min/max on a rolling basis, periodically reset the min/max so we don't end up with a loss of waveform amplitude
-  if (z > 20) {
-    z = 0;
-    lastMax = rollingMax;
-    lastMin = rollingMin;
-    rollingMin = 2200000;
-    rollingMax = 0;
-  }
- 
-  oled.setTextColor(WHITE);
-  long reading = particleSensor.getIR();    // Read pulse ox sensor; since this is a pulse pleth, we're really only after the IR component
-  peakDetection.add(reading); // adds a new data point
-  int y=40-(map(reading, lastMin, lastMax, 0, 40));   // Normalize the pleth waveform against the rolling IR min/max to keep waveform centered
-//  double movingAve = peakDetection.getFilt(); // moving average
-//  y = reading - movingAve;
-  Serial.println(y);
-  oled.drawLine(lastx,lasty,x,y,WHITE);
+      //SHOW PPG WHILE READING
+      tcount++;
+      
+      // Display is only 128 pixels wide, so if we're add the end of the display, clear the display and start back over
+      if(x>127)  
+      {
+        display.clearDisplay();
+        x=0;
+        lastx=x;
+      }
+    
+      // Even though we're keeping track of min/max on a rolling basis, periodically reset the min/max so we don't end up with a loss of waveform amplitude
+      if (z > 20) {
+        z = 0;
+        lastMax = rollingMax;
+        lastMin = rollingMin;
+        rollingMin = 2200000;
+        rollingMax = 0;
+      }
+     
+      display.setTextColor(WHITE);
 
-  // Keep track of min/max IR readings to keep waveform centered
-  if (reading > rollingMax){
-    rollingMax = reading;
-  }
+      //Get data
+      long irValue = particleSensor.getIR();    // Read pulse ox sensor; since this is a pulse pleth, we're really only after the IR component
+      peakDetection.add(irValue); // adds a new data point
+      average_IR_AC += irValue;
+      long redValue = particleSensor.getRed();
+      average_red_AC += redValue;
 
-  if (reading < rollingMin){
-    rollingMin = reading;
+      //Count beats
+      int peak = peakDetection.getPeak(); // returns 0, 1 or -1
+      double filtered = peakDetection.getFilt(); // moving average
+      if( (prevBeat == 0 or prevBeat == -1) and (peak == 1) and (filtered > 10000) ){
+        beatCount++;
+        digitalWrite(LED_BUILTIN, HIGH);
+      }
+      prevBeat = peak;
+      digitalWrite(LED_BUILTIN, LOW);
+
+      
+      //Plot PPG
+      int y=40-(map(irValue, lastMin, lastMax, 20, 40));   // Normalize the pleth waveform against the rolling IR min/max to keep waveform centered
+      Serial.println(y);
+      display.drawLine(lastx,lasty,x,y,WHITE);
+    
+      // Keep track of min/max IR readings to keep waveform centered
+      if (irValue > rollingMax){
+        rollingMax = irValue;
+      }
+    
+      if (irValue < rollingMin){
+        rollingMin = irValue;
+      }
+      
+      // Keep track of this IR reading so we can draw a line from it on the next reading
+      lasty=y;
+      lastx=x;
+
+      display.setTextSize(1);                    
+      display.setTextColor(WHITE);             
+      display.setCursor(5,60);                
+      display.print("Beat Count: "); 
+      display.println(beatCount);
+    
+      display.display();
+      digitalWrite(LED_BUILTIN, LOW);
+      x += 3; //scale x-axis
+      z++;
+      }
   }
+}
+
+
+// HELPER CODE FOR OLED
+void writeOLED(float spo2, int hr) {
+  display.clearDisplay(); //clear anthing on the display
+
+  display.setTextSize(2); // Draw 2X-scale text
+  display.setTextColor(WHITE); //sets text color as white
+  display.setCursor(2, 0); //shows where to start writing
   
-  // Keep track of this IR reading so we can draw a line from it on the next reading
-  lasty=y;
-  lastx=x;
+  display.print(F("SpO2:")); //displays the characters presentes
+  display.println(spo2);  //tells OLED what to write
+  display.print(F("HR:")); //displays the characters presentes
+  display.println(hr);  //tells OLED what to write
+  display.display();
 
-  oled.display();
-  x++;
-  z++;
+  delay(1000);
 }
